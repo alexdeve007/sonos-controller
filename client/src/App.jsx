@@ -12,6 +12,8 @@ function AppContent() {
   const { state, dispatch, addToast } = useSpeakerContext();
   const [activeTab, setActiveTab] = useState('tunein');
   const [discovering, setDiscovering] = useState(false);
+  const [manualIp, setManualIp] = useState('');
+  const [addingIp, setAddingIp] = useState(false);
 
   useSpeakers(3000);
 
@@ -102,9 +104,44 @@ function AppContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
               <p className="text-sm text-gray-400 mb-2">No speakers found</p>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-400 mb-4">
                 Make sure your Sonos speakers are on the same network and click Discover.
               </p>
+              <div className="w-full max-w-xs">
+                <p className="text-xs text-gray-500 mb-2 font-medium">Or add by IP address:</p>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!manualIp.trim()) return;
+                    setAddingIp(true);
+                    try {
+                      await api.addSpeakerByIp(manualIp.trim());
+                      addToast(`Added speaker at ${manualIp}`);
+                      setManualIp('');
+                    } catch (err) {
+                      addToast(err.message, 'error');
+                    } finally {
+                      setAddingIp(false);
+                    }
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    type="text"
+                    value={manualIp}
+                    onChange={(e) => setManualIp(e.target.value)}
+                    placeholder="192.168.1.x"
+                    className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                  <button
+                    type="submit"
+                    disabled={addingIp}
+                    className="px-3 py-1.5 text-sm bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 disabled:opacity-50 transition-colors"
+                  >
+                    {addingIp ? '...' : 'Add'}
+                  </button>
+                </form>
+              </div>
             </div>
           ) : (
             <>

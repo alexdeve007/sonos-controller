@@ -73,3 +73,10 @@ export function searchTuneIn(query) {
 export function browseTuneIn(category) {
   return request(`/api/tunein/browse?category=${encodeURIComponent(category)}`);
 }
+
+export function addSpeakerByIp(ip) {
+  return request('/api/speakers/add', {
+    method: 'POST',
+    body: JSON.stringify({ ip }),
+  });
+}
