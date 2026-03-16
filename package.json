@@ -1,0 +1,44 @@
+{
+  "name": "sonos-controller",
+  "version": "1.0.0",
+  "description": "macOS menu bar app to control Sonos speakers",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:electron\"",
+    "dev:client": "cd client && npx vite",
+    "dev:electron": "npx wait-on http://localhost:5173 && npx electron .",
+    "build:client": "cd client && npx vite build",
+    "build": "npm run build:client && npx electron-builder",
+    "start": "npx electron ."
+  },
+  "build": {
+    "appId": "com.sonos-controller.app",
+    "productName": "Sonos Controller",
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "category": "public.app-category.music"
+    },
+    "files": [
+      "electron/**/*",
+      "client/dist/**/*",
+      "assets/**/*"
+    ]
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "express": "^4.18.2",
+    "sonos": "^1.15.0-alpha.5",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  }
+}
