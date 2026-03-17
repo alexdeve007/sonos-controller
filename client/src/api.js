@@ -1,4 +1,4 @@
-const BASE = 'http://127.0.0.1:3000';
+const BASE = `http://${window.location.hostname}:3000`;
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
@@ -24,10 +24,10 @@ export function discover() {
   return request('/api/discover', { method: 'POST' });
 }
 
-export function play({ targetId, type, stationId, url, title }) {
+export function play({ targetId, type, stationId, url, title, logo, description }) {
   return request('/api/play', {
     method: 'POST',
-    body: JSON.stringify({ targetId, type, stationId, url, title }),
+    body: JSON.stringify({ targetId, type, stationId, url, title, logo, description }),
   });
 }
 
@@ -68,6 +68,10 @@ export function ungroupSpeaker(speakerId) {
 
 export function searchTuneIn(query) {
   return request(`/api/tunein/search?q=${encodeURIComponent(query)}`);
+}
+
+export function getRecentStations() {
+  return request('/api/tunein/recent');
 }
 
 export function browseTuneIn(category) {

@@ -2,7 +2,7 @@ const { DeviceDiscovery, Sonos } = require('sonos');
 const dgram = require('dgram');
 const os = require('os');
 const http = require('http');
-const { setSpeaker, clearSpeakers } = require('../state');
+const { setSpeaker } = require('../state');
 const { getSpeakerInfo } = require('./sonosClient');
 const Store = require('electron-store');
 
@@ -20,46 +20,86 @@ const SSDP_SEARCH = [
 ].join('\r\n');
 
 /**
- * Strategy 1: Use the sonos library's built-in discovery
+ * Get all active IPv4 network interfaces
+ */
+function getActiveInterfaces() {
+  const interfaces = os.networkInterfaces();
+  const result = [];
+  for (const [name, addrs] of Object.entries(interfaces)) {
+    for (const addr of addrs) {
+      if (addr.family === 'IPv4' && !addr.internal) {
+        result.push({ name, address: addr.address, netmask: addr.netmask });
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Calculate all IPs in a subnet from address + netmask
+ */
+function getSubnetRange(address, netmask) {
+  const addrParts = address.split('.').map(Number);
+  const maskParts = netmask.split('.').map(Number);
+
+  const networkStart = addrParts.map((a, i) => a & maskParts[i]);
+  const networkEnd = addrParts.map((a, i) => (a & maskParts[i]) | (~maskParts[i] & 255));
+
+  const ips = [];
+  for (let a = networkStart[0]; a <= networkEnd[0]; a++) {
+    for (let b = networkStart[1]; b <= networkEnd[1]; b++) {
+      for (let c = networkStart[2]; c <= networkEnd[2]; c++) {
+        for (let d = networkStart[3] + 1; d < networkEnd[3]; d++) {
+          ips.push(`${a}.${b}.${c}.${d}`);
+        }
+      }
+    }
+  }
+  return ips;
+}
+
+/**
+ * Strategy 1: Use the sonos library's built-in discovery (wrapped to catch errors)
  */
 function libraryDiscovery(timeoutMs = 8000) {
   return new Promise((resolve) => {
     const found = new Set();
-    const discovery = DeviceDiscovery({ timeout: timeoutMs });
+    try {
+      const discovery = DeviceDiscovery({ timeout: timeoutMs });
 
-    discovery.on('DeviceAvailable', (device) => {
-      if (device.host) found.add(device.host);
-    });
+      discovery.on('DeviceAvailable', (device) => {
+        if (device.host) found.add(device.host);
+      });
 
-    discovery.on('timeout', () => {
-      resolve([...found]);
-    });
+      discovery.on('timeout', () => {
+        resolve([...found]);
+      });
 
+      // Catch any errors from the discovery object
+      discovery.on('error', (err) => {
+        console.log('[Discovery] Library discovery error (non-fatal):', err.message);
+      });
+    } catch (err) {
+      console.log('[Discovery] Library discovery failed to start:', err.message);
+    }
+
+    // Safety timeout
     setTimeout(() => resolve([...found]), timeoutMs + 1000);
   });
 }
 
 /**
- * Strategy 2: Raw SSDP multicast search (more reliable on some networks)
+ * Strategy 2: Raw SSDP multicast search on each active interface
  */
 function rawSsdpDiscovery(timeoutMs = 8000) {
   return new Promise((resolve) => {
     const found = new Set();
     const sockets = [];
+    const activeInterfaces = getActiveInterfaces();
 
-    // Get all local network interfaces
-    const interfaces = os.networkInterfaces();
-    const localAddresses = [];
-    for (const [, addrs] of Object.entries(interfaces)) {
-      for (const addr of addrs) {
-        if (addr.family === 'IPv4' && !addr.internal) {
-          localAddresses.push(addr.address);
-        }
-      }
-    }
+    console.log(`[Discovery] Active interfaces: ${activeInterfaces.map((i) => `${i.name}(${i.address})`).join(', ')}`);
 
-    // Create a socket per interface for better multicast coverage
-    for (const localAddr of localAddresses) {
+    for (const iface of activeInterfaces) {
       try {
         const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 
@@ -67,46 +107,40 @@ function rawSsdpDiscovery(timeoutMs = 8000) {
           const text = msg.toString();
           if (text.toLowerCase().includes('zoneplayer') || text.toLowerCase().includes('sonos')) {
             const locMatch = text.match(/LOCATION:\s*http:\/\/([^:/]+)/i);
-            if (locMatch) found.add(locMatch[1]);
+            if (locMatch) {
+              console.log(`[Discovery] SSDP found device at ${locMatch[1]} via ${iface.name}`);
+              found.add(locMatch[1]);
+            }
           }
         });
 
-        socket.on('error', () => {});
+        socket.on('error', (err) => {
+          console.log(`[Discovery] Socket error on ${iface.name} (non-fatal): ${err.message}`);
+        });
 
-        socket.bind(0, localAddr, () => {
+        socket.bind(0, iface.address, () => {
           try {
-            socket.addMembership(SSDP_ADDRESS, localAddr);
+            socket.setMulticastInterface(iface.address);
           } catch (e) { /* ignore */ }
+          try {
+            socket.addMembership(SSDP_ADDRESS, iface.address);
+          } catch (e) { /* ignore */ }
+
           const buf = Buffer.from(SSDP_SEARCH);
-          // Send multiple times for reliability
-          socket.send(buf, 0, buf.length, SSDP_PORT, SSDP_ADDRESS);
-          setTimeout(() => socket.send(buf, 0, buf.length, SSDP_PORT, SSDP_ADDRESS), 500);
-          setTimeout(() => socket.send(buf, 0, buf.length, SSDP_PORT, SSDP_ADDRESS), 1500);
+          const send = () => {
+            try { socket.send(buf, 0, buf.length, SSDP_PORT, SSDP_ADDRESS); } catch (e) { /* ignore */ }
+          };
+          send();
+          setTimeout(send, 500);
+          setTimeout(send, 1500);
+          setTimeout(send, 3000);
         });
 
         sockets.push(socket);
-      } catch (e) { /* ignore interface */ }
+      } catch (e) {
+        console.log(`[Discovery] Failed to create socket on ${iface.name}: ${e.message}`);
+      }
     }
-
-    // Also try a generic socket without binding to a specific interface
-    try {
-      const genericSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-      genericSocket.on('message', (msg) => {
-        const text = msg.toString();
-        if (text.toLowerCase().includes('zoneplayer') || text.toLowerCase().includes('sonos')) {
-          const locMatch = text.match(/LOCATION:\s*http:\/\/([^:/]+)/i);
-          if (locMatch) found.add(locMatch[1]);
-        }
-      });
-      genericSocket.on('error', () => {});
-      genericSocket.bind(0, () => {
-        const buf = Buffer.from(SSDP_SEARCH);
-        genericSocket.send(buf, 0, buf.length, SSDP_PORT, SSDP_ADDRESS);
-        setTimeout(() => genericSocket.send(buf, 0, buf.length, SSDP_PORT, SSDP_ADDRESS), 500);
-        setTimeout(() => genericSocket.send(buf, 0, buf.length, SSDP_PORT, SSDP_ADDRESS), 1500);
-      });
-      sockets.push(genericSocket);
-    } catch (e) { /* ignore */ }
 
     setTimeout(() => {
       sockets.forEach((s) => { try { s.close(); } catch (e) {} });
@@ -116,59 +150,49 @@ function rawSsdpDiscovery(timeoutMs = 8000) {
 }
 
 /**
- * Strategy 3: Scan common IPs on the local subnet for Sonos port 1400
+ * Strategy 3: Scan the actual subnet for Sonos port 1400
+ * Respects the real netmask (works with /22, /23, /24, etc.)
  */
-function subnetScan(timeoutMs = 10000) {
+function subnetScan(timeoutMs = 15000) {
   return new Promise((resolve) => {
     const found = new Set();
-    const interfaces = os.networkInterfaces();
-    const subnets = [];
+    const activeInterfaces = getActiveInterfaces();
+    const allIps = new Set();
 
-    for (const [, addrs] of Object.entries(interfaces)) {
-      for (const addr of addrs) {
-        if (addr.family === 'IPv4' && !addr.internal) {
-          const parts = addr.address.split('.');
-          subnets.push(`${parts[0]}.${parts[1]}.${parts[2]}`);
-        }
-      }
+    for (const iface of activeInterfaces) {
+      const ips = getSubnetRange(iface.address, iface.netmask);
+      console.log(`[Discovery] Subnet scan: ${iface.name} ${iface.address}/${iface.netmask} → ${ips.length} IPs`);
+      ips.forEach((ip) => allIps.add(ip));
     }
 
-    let pending = 0;
-    const perHostTimeout = Math.min(1500, timeoutMs / 2);
+    // Cap at 1024 to avoid flooding, scan in batches
+    const ipList = [...allIps].slice(0, 1024);
+    let pending = ipList.length;
 
-    for (const subnet of [...new Set(subnets)]) {
-      for (let i = 1; i <= 254; i++) {
-        const ip = `${subnet}.${i}`;
-        pending++;
+    if (pending === 0) {
+      resolve([]);
+      return;
+    }
 
-        const req = http.get(`http://${ip}:1400/xml/device_description.xml`, { timeout: perHostTimeout }, (res) => {
-          let data = '';
-          res.on('data', (chunk) => data += chunk);
-          res.on('end', () => {
-            if (data.includes('Sonos') || data.includes('ZonePlayer')) {
-              found.add(ip);
-            }
-            pending--;
-          });
+    const perHostTimeout = 1500;
+
+    for (const ip of ipList) {
+      const req = http.get(`http://${ip}:1400/xml/device_description.xml`, { timeout: perHostTimeout }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          if (data.includes('Sonos') || data.includes('ZonePlayer')) {
+            console.log(`[Discovery] Subnet scan found Sonos at ${ip}`);
+            found.add(ip);
+          }
+          if (--pending <= 0) resolve([...found]);
         });
-
-        req.on('error', () => { pending--; });
-        req.on('timeout', () => { req.destroy(); pending--; });
-      }
+      });
+      req.on('error', () => { if (--pending <= 0) resolve([...found]); });
+      req.on('timeout', () => { req.destroy(); });
     }
 
-    // Resolve when done or timeout
-    const check = setInterval(() => {
-      if (pending <= 0) {
-        clearInterval(check);
-        resolve([...found]);
-      }
-    }, 200);
-
-    setTimeout(() => {
-      clearInterval(check);
-      resolve([...found]);
-    }, timeoutMs);
+    setTimeout(() => resolve([...found]), timeoutMs);
   });
 }
 
@@ -191,7 +215,7 @@ async function discoverSpeakers() {
   if (allIps.size === 0) {
     console.log('[Discovery] SSDP failed, falling back to subnet scan on port 1400...');
     const scanResults = await subnetScan(15000).catch(() => []);
-    allIps = new Set(scanResults);
+    for (const ip of scanResults) allIps.add(ip);
     console.log(`[Discovery] Subnet scan found ${allIps.size} speaker(s): ${[...allIps].join(', ') || 'none'}`);
   }
 
@@ -213,7 +237,6 @@ async function discoverSpeakers() {
     [...allIps].map(async (ip) => {
       const device = new Sonos(ip);
       const info = await getSpeakerInfo(device);
-      // Apply name overrides
       const override = overrides.find((o) => o.ip === ip);
       if (override?.name) info.name = override.name;
       setSpeaker(info.id, info);

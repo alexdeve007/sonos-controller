@@ -1,7 +1,14 @@
 const { Router } = require('express');
+const Store = require('electron-store');
 const { searchStations, browseCategory } = require('../services/tuneInClient');
 
 const router = Router();
+
+router.get('/tunein/recent', (req, res) => {
+  const store = new Store();
+  const recent = store.get('recentStations', []);
+  res.json(recent);
+});
 
 router.get('/tunein/search', async (req, res) => {
   const { q } = req.query;

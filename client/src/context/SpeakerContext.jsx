@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useCallback } from 'react';
+import { createContext, useContext, useReducer, useCallback, useRef } from 'react';
 
 const SpeakerContext = createContext(null);
 
@@ -40,6 +40,7 @@ function reducer(state, action) {
 
 export function SpeakerProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const refreshRef = useRef(null);
 
   const addToast = useCallback((message, type = 'success') => {
     const id = Date.now();
@@ -47,8 +48,16 @@ export function SpeakerProvider({ children }) {
     setTimeout(() => dispatch({ type: 'REMOVE_TOAST', payload: id }), 4000);
   }, []);
 
+  const setRefreshFn = useCallback((fn) => {
+    refreshRef.current = fn;
+  }, []);
+
+  const refreshNow = useCallback((delayMs) => {
+    if (refreshRef.current) return refreshRef.current(delayMs);
+  }, []);
+
   return (
-    <SpeakerContext.Provider value={{ state, dispatch, addToast }}>
+    <SpeakerContext.Provider value={{ state, dispatch, addToast, setRefreshFn, refreshNow }}>
       {children}
     </SpeakerContext.Provider>
   );

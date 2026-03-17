@@ -30,9 +30,22 @@ router.post('/play', async (req, res) => {
 
     await playStream(speaker.ip, streamUrl);
 
-    // Save to recent URLs
+    // Save to recent stations/URLs
+    const store = new Store();
+    if (type === 'tunein' && stationId) {
+      const recent = store.get('recentStations', []);
+      const entry = {
+        stationId,
+        name: title || stationId,
+        logo: req.body.logo || null,
+        description: req.body.description || null,
+        playedAt: Date.now(),
+      };
+      const filtered = recent.filter((r) => r.stationId !== stationId);
+      filtered.unshift(entry);
+      store.set('recentStations', filtered.slice(0, 20));
+    }
     if (type === 'url' && streamUrl) {
-      const store = new Store();
       const recent = store.get('recentUrls', []);
       const entry = { url: streamUrl, title: title || streamUrl };
       const filtered = recent.filter((r) => r.url !== streamUrl);
@@ -75,16 +88,16 @@ router.post('/volume', async (req, res) => {
   const { targetId, targetType, volume } = req.body;
 
   if (targetType === 'group') {
-    // Adjust all members proportionally
+    // Adjust all members in parallel
     const speakers = getAllSpeakers().filter(
       (s) => s.groupId === targetId || s.id === targetId
     );
 
     try {
-      for (const s of speakers) {
-        await setVolume(s.ip, volume);
+      await Promise.all(speakers.map((s) => {
         updateSpeakerField(s.id, 'volume', volume);
-      }
+        return setVolume(s.ip, volume);
+      }));
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message });

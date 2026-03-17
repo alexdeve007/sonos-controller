@@ -47,3 +47,33 @@ input[type='range']::-webkit-slider-thumb {
   margin-top: -5px;
   cursor: pointer;
 }
+
+/* Safe area for iPhone notch/home indicator */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Equalizer animation */
+.equalizer {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 12px;
+}
+
+.equalizer .bar {
+  width: 2.5px;
+  border-radius: 1px;
+  background: #22c55e;
+  animation: eq-bounce 1s ease-in-out infinite;
+}
+
+.equalizer .bar:nth-child(1) { height: 40%; animation-delay: 0s; }
+.equalizer .bar:nth-child(2) { height: 70%; animation-delay: 0.15s; }
+.equalizer .bar:nth-child(3) { height: 50%; animation-delay: 0.3s; }
+.equalizer .bar:nth-child(4) { height: 80%; animation-delay: 0.45s; }
+
+@keyframes eq-bounce {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}

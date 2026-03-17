@@ -9,7 +9,20 @@ const router = Router();
 
 router.get('/speakers', (req, res) => {
   const speakers = getAllSpeakers();
-  res.json(speakers);
+  // Filter out subs, bonded satellites, and stereo pair secondaries
+  const nameCount = new Map();
+  for (const s of speakers) {
+    nameCount.set(s.name, (nameCount.get(s.name) || 0) + 1);
+  }
+  const visible = speakers.filter((s) => {
+    const model = (s.model || '').toLowerCase();
+    if (model.includes('sub')) return false;
+    if (!s.groupId) return false;
+    // Stereo pair: same name, not coordinator → hide the secondary
+    if (!s.isCoordinator && nameCount.get(s.name) > 1) return false;
+    return true;
+  });
+  res.json(visible);
 });
 
 router.post('/discover', async (req, res) => {

@@ -1,11 +1,21 @@
+import { useState } from 'react';
 import { useSpeakerContext } from '../../context/SpeakerContext';
 import VolumeSlider from './VolumeSlider';
+import Equalizer from '../Equalizer';
 import * as api from '../../api';
 
 export default function SpeakerCard({ speaker, allSpeakers }) {
-  const { state, dispatch, addToast } = useSpeakerContext();
+  const { state, dispatch, addToast, refreshNow } = useSpeakerContext();
+  const [showGroupMenu, setShowGroupMenu] = useState(false);
   const isSelected = state.selectedSpeakerId === speaker.id;
   const isPlaying = speaker.playbackState === 'PLAYING';
+
+  // Check if this speaker is part of a multi-speaker group
+  const group = state.groups.find((g) => g.groupId === speaker.groupId);
+  const isInMultiGroup = group && group.members.length > 1;
+
+  // Don't render individually if it's in a multi-speaker group (shown in GroupCard instead)
+  if (isInMultiGroup) return null;
 
   const handleSelect = () => {
     dispatch({ type: 'SELECT_SPEAKER', payload: speaker.id });
@@ -19,7 +29,7 @@ export default function SpeakerCard({ speaker, allSpeakers }) {
         type: 'UPDATE_SPEAKER',
         payload: { id: speaker.id, data: { playbackState: 'STOPPED', currentStream: null } },
       });
-      addToast(`Stopped ${speaker.name}`);
+      refreshNow();
     } catch (err) {
       addToast(`Failed to stop ${speaker.name}`, 'error');
     }
@@ -51,27 +61,21 @@ export default function SpeakerCard({ speaker, allSpeakers }) {
     }
   };
 
-  const handleUngroup = async (e) => {
-    e.stopPropagation();
-    try {
-      await api.ungroupSpeaker(speaker.id);
-      addToast(`${speaker.name} removed from group`);
-    } catch (err) {
-      addToast(`Failed to ungroup ${speaker.name}`, 'error');
-    }
-  };
+  // Other groups this speaker could join (coordinators of other groups)
+  const otherCoordinators = allSpeakers.filter(
+    (s) => s.id !== speaker.id && s.isCoordinator && s.groupId !== speaker.groupId
+  );
 
-  const handleGroup = async (e, coordinatorId) => {
+  const handleJoinGroup = async (e, coordinatorId) => {
     e.stopPropagation();
+    setShowGroupMenu(false);
     try {
       await api.groupSpeaker(speaker.id, coordinatorId);
-      addToast(`${speaker.name} added to group`);
+      refreshNow();
     } catch (err) {
       addToast(`Failed to group ${speaker.name}`, 'error');
     }
   };
-
-  const otherSpeakers = allSpeakers.filter((s) => s.id !== speaker.id && s.isCoordinator);
 
   return (
     <div
@@ -83,21 +87,11 @@ export default function SpeakerCard({ speaker, allSpeakers }) {
       }`}
     >
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm">{speaker.name}</h3>
-          <span className="text-xs text-gray-400">{speaker.model}</span>
-          {speaker.groupId && !speaker.isCoordinator && (
-            <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
-              Grouped
-            </span>
-          )}
-          {speaker.isCoordinator && speaker.groupId && (
-            <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">
-              Coordinator
-            </span>
-          )}
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="font-semibold text-sm truncate">{speaker.name}</h3>
+          <span className="text-xs text-gray-400 shrink-0">{speaker.model}</span>
         </div>
-        <div className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-green-400' : 'bg-gray-300'}`} />
+        {isPlaying ? <Equalizer /> : <div className="w-2 h-2 rounded-full shrink-0 bg-gray-300" />}
       </div>
 
       <p className="text-xs text-gray-500 mb-2 truncate">
@@ -126,7 +120,7 @@ export default function SpeakerCard({ speaker, allSpeakers }) {
         <VolumeSlider value={speaker.volume} onChange={handleVolumeChange} />
       </div>
 
-      <div className="flex gap-1">
+      <div className="flex gap-1 flex-wrap">
         {isPlaying && (
           <button
             onClick={handleStop}
@@ -135,32 +129,33 @@ export default function SpeakerCard({ speaker, allSpeakers }) {
             Stop
           </button>
         )}
-        {!speaker.isCoordinator && speaker.groupId && (
-          <button
-            onClick={handleUngroup}
-            className="text-xs px-2 py-1 bg-gray-50 text-gray-600 rounded hover:bg-gray-100"
-          >
-            Leave Group
-          </button>
-        )}
-        {otherSpeakers.length > 0 && speaker.isCoordinator && (
-          <div className="relative group/dropdown">
-            <button className="text-xs px-2 py-1 bg-purple-50 text-purple-600 rounded hover:bg-purple-100">
+        {otherCoordinators.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowGroupMenu(!showGroupMenu);
+              }}
+              className="text-xs px-2 py-1 bg-purple-50 text-purple-600 rounded hover:bg-purple-100"
+            >
               Add to Group
             </button>
-            <div className="hidden group-hover/dropdown:block absolute left-0 top-full mt-1 bg-white border rounded shadow-lg z-10 min-w-[140px]">
-              {allSpeakers
-                .filter((s) => s.id !== speaker.id)
-                .map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={(e) => handleGroup(e, speaker.id)}
-                    className="block w-full text-left text-xs px-3 py-1.5 hover:bg-gray-50"
-                  >
-                    {s.name}
-                  </button>
-                ))}
-            </div>
+            {showGroupMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowGroupMenu(false); }} />
+                <div className="absolute left-0 top-full mt-1 bg-white border rounded shadow-lg z-20 min-w-[140px]">
+                  {otherCoordinators.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={(e) => handleJoinGroup(e, s.id)}
+                      className="block w-full text-left text-xs px-3 py-2 hover:bg-gray-50 active:bg-gray-100"
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
