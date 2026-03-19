@@ -10,19 +10,25 @@ const router = Router();
 router.get('/speakers', (req, res) => {
   const speakers = getAllSpeakers();
   // Filter out subs, bonded satellites, and stereo pair secondaries
-  const nameCount = new Map();
-  for (const s of speakers) {
-    nameCount.set(s.name, (nameCount.get(s.name) || 0) + 1);
-  }
   const visible = speakers.filter((s) => {
     const model = (s.model || '').toLowerCase();
     if (model.includes('sub')) return false;
     if (!s.groupId) return false;
-    // Stereo pair: same name, not coordinator → hide the secondary
-    if (!s.isCoordinator && nameCount.get(s.name) > 1) return false;
     return true;
   });
-  res.json(visible);
+  // Remove stereo pair secondaries: if exactly 2 speakers share the same name
+  // AND same group AND no other speakers are in that group, hide the non-coordinator
+  const deduped = visible.filter((s) => {
+    if (s.isCoordinator) return true;
+    const sameNameSameGroup = visible.filter(
+      (other) => other.name === s.name && other.groupId === s.groupId
+    );
+    const totalInGroup = visible.filter((other) => other.groupId === s.groupId);
+    // Only hide if it's a pure stereo pair (2 same-name speakers, no others in group)
+    if (sameNameSameGroup.length === 2 && totalInGroup.length === 2) return false;
+    return true;
+  });
+  res.json(deduped);
 });
 
 router.post('/discover', async (req, res) => {

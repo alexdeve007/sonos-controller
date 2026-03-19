@@ -19,8 +19,11 @@ export function useSpeakers(pollInterval = 3000) {
 
   pollRef.current = poll;
 
-  const refreshNow = useCallback(async (delayMs = 800) => {
+  const refreshNow = useCallback(async (delayMs = 1200) => {
     await new Promise((r) => setTimeout(r, delayMs));
+    await pollRef.current();
+    // Second poll to catch late Sonos group updates
+    await new Promise((r) => setTimeout(r, 1500));
     await pollRef.current();
   }, []);
 

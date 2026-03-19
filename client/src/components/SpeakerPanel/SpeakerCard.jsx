@@ -61,9 +61,9 @@ export default function SpeakerCard({ speaker, allSpeakers }) {
     }
   };
 
-  // Other groups this speaker could join (coordinators of other groups)
-  const otherCoordinators = allSpeakers.filter(
-    (s) => s.id !== speaker.id && s.isCoordinator && s.groupId !== speaker.groupId
+  // Only show "Add to Group" on stopped speakers — join a playing speaker's group
+  const playingCoordinators = allSpeakers.filter(
+    (s) => s.id !== speaker.id && s.isCoordinator && s.playbackState === 'PLAYING' && s.groupId !== speaker.groupId
   );
 
   const handleJoinGroup = async (e, coordinatorId) => {
@@ -129,7 +129,15 @@ export default function SpeakerCard({ speaker, allSpeakers }) {
             Stop
           </button>
         )}
-        {otherCoordinators.length > 0 && (
+        {!isPlaying && playingCoordinators.length === 1 && (
+          <button
+            onClick={(e) => handleJoinGroup(e, playingCoordinators[0].id)}
+            className="text-xs px-2 py-1 bg-purple-50 text-purple-600 rounded hover:bg-purple-100 active:bg-purple-200"
+          >
+            Join {playingCoordinators[0].name}
+          </button>
+        )}
+        {!isPlaying && playingCoordinators.length > 1 && (
           <div className="relative">
             <button
               onClick={(e) => {
@@ -144,7 +152,7 @@ export default function SpeakerCard({ speaker, allSpeakers }) {
               <>
                 <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowGroupMenu(false); }} />
                 <div className="absolute left-0 top-full mt-1 bg-white border rounded shadow-lg z-20 min-w-[140px]">
-                  {otherCoordinators.map((s) => (
+                  {playingCoordinators.map((s) => (
                     <button
                       key={s.id}
                       onClick={(e) => handleJoinGroup(e, s.id)}

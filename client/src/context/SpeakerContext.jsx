@@ -13,8 +13,16 @@ const initialState = {
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'SET_SPEAKERS':
-      return { ...state, speakers: action.payload, loading: false };
+    case 'SET_SPEAKERS': {
+      const speakers = action.payload;
+      let selectedId = state.selectedSpeakerId;
+      // Auto-select: if nothing selected (or selected speaker gone), pick the one that's playing
+      if (!selectedId || !speakers.find((s) => s.id === selectedId)) {
+        const playing = speakers.find((s) => s.playbackState === 'PLAYING' && s.isCoordinator);
+        selectedId = playing ? playing.id : (speakers[0]?.id || null);
+      }
+      return { ...state, speakers, selectedSpeakerId: selectedId, loading: false };
+    }
     case 'SET_GROUPS':
       return { ...state, groups: action.payload };
     case 'SELECT_SPEAKER':

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export default function UrlTab({ onPlay }) {
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [recentUrls, setRecentUrls] = useState([]);
+  const [editMode, setEditMode] = useState(false);
 
   useEffect(() => {
     try {
@@ -67,16 +68,37 @@ export default function UrlTab({ onPlay }) {
 
       {recentUrls.length > 0 && (
         <div>
-          <p className="text-xs font-medium text-gray-500 mb-2">Recent URLs</p>
-          <div className="flex flex-wrap gap-1">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-gray-500">Recent URLs</p>
+            <button
+              onClick={() => setEditMode(!editMode)}
+              className="text-xs text-indigo-500 hover:text-indigo-700"
+            >
+              {editMode ? 'Done' : 'Edit'}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
             {recentUrls.map((recent, i) => (
               <button
                 key={i}
-                onClick={() => handleQuickPlay(recent)}
-                className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 truncate max-w-[200px]"
+                onClick={() => {
+                  if (editMode) {
+                    const updated = recentUrls.filter((r) => r.url !== recent.url);
+                    setRecentUrls(updated);
+                    localStorage.setItem('recentUrls', JSON.stringify(updated));
+                    if (updated.length === 0) setEditMode(false);
+                  } else {
+                    handleQuickPlay(recent);
+                  }
+                }}
+                className={`px-3 py-1.5 text-xs rounded-full truncate max-w-[200px] transition-colors ${
+                  editMode
+                    ? 'bg-red-50 text-red-600 border border-red-200'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
                 title={recent.url}
               >
-                {recent.title}
+                {editMode ? `✕ ${recent.title}` : recent.title}
               </button>
             ))}
           </div>

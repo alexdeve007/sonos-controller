@@ -121,7 +121,7 @@ function AppContent() {
           {state.groups
             .filter((g) => g.members.length > 1)
             .map((group) => (
-              <GroupCard key={group.groupId} group={group} />
+              <GroupCard key={group.groupId} group={group} allSpeakers={state.speakers} />
             ))}
           {state.speakers.map((speaker) => (
             <SpeakerCard

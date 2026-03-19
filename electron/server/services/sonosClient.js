@@ -71,8 +71,32 @@ async function getDevice(ip) {
 
 async function playStream(ip, streamUrl, metadata) {
   const device = new Sonos(ip);
-  await device.setAVTransportURI({ uri: streamUrl, metadata: metadata || '' });
-  await device.play();
+
+  let uri = streamUrl;
+
+  // Sonos S1 doesn't support HTTPS — try to downgrade to HTTP
+  if (/^https:\/\//i.test(uri)) {
+    uri = uri.replace(/^https:\/\//i, 'http://');
+  }
+
+  // For HTTP audio streams, use x-rincon-mp3radio:// protocol
+  if (/^http:\/\//i.test(uri)) {
+    uri = uri.replace(/^http:\/\//i, 'x-rincon-mp3radio://');
+  }
+
+  try {
+    await device.setAVTransportURI({ uri, metadata: metadata || '' });
+    await device.play();
+  } catch (err) {
+    // If x-rincon-mp3radio fails, try raw HTTP URI as fallback
+    if (err.message && err.message.includes('upnp')) {
+      const fallbackUri = streamUrl.replace(/^https:\/\//i, 'http://');
+      await device.setAVTransportURI({ uri: fallbackUri, metadata: metadata || '' });
+      await device.play();
+    } else {
+      throw err;
+    }
+  }
 }
 
 async function stopPlayback(ip) {

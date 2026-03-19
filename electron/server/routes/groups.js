@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { getGroups, getSpeaker } = require('../state');
 const { joinGroup, leaveGroup } = require('../services/sonosClient');
+const { discoverSpeakers } = require('../services/discovery');
 
 const router = Router();
 
@@ -21,6 +22,8 @@ router.post('/group', async (req, res) => {
   try {
     await joinGroup(speaker.ip, coordinator.ip);
     res.json({ success: true });
+    // Refresh speaker state in background after group change
+    setTimeout(() => discoverSpeakers().catch(() => {}), 1000);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -37,6 +40,8 @@ router.post('/ungroup', async (req, res) => {
   try {
     await leaveGroup(speaker.ip);
     res.json({ success: true });
+    // Refresh speaker state in background after ungroup
+    setTimeout(() => discoverSpeakers().catch(() => {}), 1000);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

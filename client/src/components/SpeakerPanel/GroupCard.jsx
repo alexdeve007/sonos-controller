@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import VolumeSlider from './VolumeSlider';
 import Equalizer from '../Equalizer';
 import { useSpeakerContext } from '../../context/SpeakerContext';
 import * as api from '../../api';
 
-export default function GroupCard({ group }) {
+export default function GroupCard({ group, allSpeakers }) {
   const { state, dispatch, addToast, refreshNow } = useSpeakerContext();
+  const [showGroupMenu, setShowGroupMenu] = useState(false);
 
   if (group.members.length <= 1) return null;
 
@@ -87,6 +89,23 @@ export default function GroupCard({ group }) {
       refreshNow();
     } catch (err) {
       addToast('Failed to ungroup', 'error');
+    }
+  };
+
+  // For stopped stereo pairs / groups — show join button for playing speakers
+  const playingCoordinators = (allSpeakers || []).filter(
+    (s) => s.isCoordinator && s.playbackState === 'PLAYING' && s.groupId !== group.groupId
+  );
+
+  const handleJoinGroup = async (e, coordinatorId) => {
+    e.stopPropagation();
+    setShowGroupMenu(false);
+    if (!coordinator) return;
+    try {
+      await api.groupSpeaker(coordinator.id, coordinatorId);
+      refreshNow();
+    } catch (err) {
+      addToast(`Failed to group`, 'error');
     }
   };
 
@@ -200,6 +219,43 @@ export default function GroupCard({ group }) {
               Remove {m.name}
             </button>
           ))}
+        {!isPlaying && playingCoordinators.length === 1 && (
+          <button
+            onClick={(e) => handleJoinGroup(e, playingCoordinators[0].id)}
+            className="text-xs px-2 py-1 bg-purple-50 text-purple-600 rounded hover:bg-purple-100 active:bg-purple-200"
+          >
+            Join {playingCoordinators[0].name}
+          </button>
+        )}
+        {!isPlaying && playingCoordinators.length > 1 && (
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowGroupMenu(!showGroupMenu);
+              }}
+              className="text-xs px-2 py-1 bg-purple-50 text-purple-600 rounded hover:bg-purple-100"
+            >
+              Add to Group
+            </button>
+            {showGroupMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowGroupMenu(false); }} />
+                <div className="absolute left-0 top-full mt-1 bg-white border rounded shadow-lg z-20 min-w-[140px]">
+                  {playingCoordinators.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={(e) => handleJoinGroup(e, s.id)}
+                      className="block w-full text-left text-xs px-3 py-2 hover:bg-gray-50 active:bg-gray-100"
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

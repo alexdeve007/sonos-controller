@@ -28,16 +28,21 @@ function clearSpeakers() {
 function getGroups() {
   const speakers = getAllSpeakers();
 
-  // Filter out subs, bonded satellites, and stereo pair secondaries
-  const nameCount = new Map();
-  for (const s of speakers) {
-    nameCount.set(s.name, (nameCount.get(s.name) || 0) + 1);
-  }
-  const visibleSpeakers = speakers.filter((s) => {
+  // Filter out subs and bonded satellites
+  const filtered = speakers.filter((s) => {
     const model = (s.model || '').toLowerCase();
     if (model.includes('sub')) return false;
     if (!s.groupId) return false;
-    if (!s.isCoordinator && nameCount.get(s.name) > 1) return false;
+    return true;
+  });
+  // Remove stereo pair secondaries: pure stereo pair = 2 same-name speakers alone in a group
+  const visibleSpeakers = filtered.filter((s) => {
+    if (s.isCoordinator) return true;
+    const sameNameSameGroup = filtered.filter(
+      (other) => other.name === s.name && other.groupId === s.groupId
+    );
+    const totalInGroup = filtered.filter((other) => other.groupId === s.groupId);
+    if (sameNameSameGroup.length === 2 && totalInGroup.length === 2) return false;
     return true;
   });
 
