@@ -44,16 +44,53 @@ async function getSpeakerInfo(device) {
     volume: typeof volume === 'number' ? volume : parseInt(volume) || 0,
     muted: !!muted,
     playbackState: normalizeState(state),
+    currentTrack: track ? {
+      title: track.title || null,
+      artist: track.artist || null,
+      album: track.album || null,
+      albumArtUri: track.albumArtURI || track.albumArtUri || null,
+    } : null,
     currentStream: track && track.uri
       ? {
-          title: track.title && track.title !== '' ? track.title :
-                 track.artist && track.artist !== '' ? track.artist :
-                 track.uri.startsWith('x-rincon:') ? '(Grouped)' :
-                 track.uri.replace(/^x-rincon-mp3radio:\/\//, '').split('/').pop() || 'Unknown',
+          title: formatTrackTitle(track),
           url: track.uri,
         }
       : null,
   };
+}
+
+function formatTrackTitle(track) {
+  if (!track || !track.uri) return 'Unknown';
+
+  // Grouped speaker
+  if (track.uri.startsWith('x-rincon:')) return '(Grouped)';
+
+  // Build display from available metadata
+  const title = track.title && track.title !== '' && !isRawFilename(track.title) ? track.title : null;
+  const artist = track.artist && track.artist !== '' ? track.artist : null;
+
+  if (title && artist) return `${artist} - ${title}`;
+  if (title) return title;
+  if (artist) return artist;
+
+  // Fallback: clean up the URI
+  const cleanUrl = track.uri
+    .replace(/^x-rincon-mp3radio:\/\//, '')
+    .replace(/\?.*$/, ''); // remove query params
+  // Try to get a readable name from the URL path
+  const pathParts = cleanUrl.split('/').filter(Boolean);
+  const lastPart = pathParts[pathParts.length - 1] || cleanUrl;
+  // If it's a hostname, use it; if it's a filename, clean it
+  if (lastPart.includes('.') && !lastPart.includes('/')) {
+    const name = lastPart.replace(/[-_]/g, ' ').replace(/\.\w+$/, '');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+  return pathParts[0] || 'Unknown'; // hostname as last resort
+}
+
+function isRawFilename(title) {
+  // Detect raw filenames like "nova-ln-128.mp3" or "fip-hifi.aac"
+  return /\.\w{2,4}$/.test(title) && title.length < 40;
 }
 
 function normalizeState(state) {

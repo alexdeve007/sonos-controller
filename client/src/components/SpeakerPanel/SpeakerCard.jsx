@@ -96,7 +96,7 @@ export default function SpeakerCard({ speaker, allSpeakers }) {
 
       <p className="text-xs text-gray-500 mb-2 truncate">
         {isPlaying && speaker.currentStream
-          ? `♫ ${speaker.currentStream.title}`
+          ? `♫ ${speaker.currentStream.title}${speaker.currentTrack?.artist && speaker.currentTrack.artist !== speaker.currentStream.title ? ` · ${speaker.currentTrack.artist}` : ''}`
           : 'Stopped'}
       </p>
 

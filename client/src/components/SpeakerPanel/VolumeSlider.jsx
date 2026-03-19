@@ -3,9 +3,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 export default function VolumeSlider({ value, onChange, label }) {
   const [localValue, setLocalValue] = useState(value);
   const [isDragging, setIsDragging] = useState(false);
-  const throttleRef = useRef(null);
+  const debounceRef = useRef(null);
   const lastSentRef = useRef(value);
-  const latestValue = useRef(value);
 
   // Sync external value when not dragging
   useEffect(() => {
@@ -27,28 +26,25 @@ export default function VolumeSlider({ value, onChange, label }) {
   const handleChange = useCallback((e) => {
     const v = parseInt(e.target.value);
     setLocalValue(v);
-    latestValue.current = v;
     setIsDragging(true);
 
-    // Throttle: send at most every 100ms while dragging
-    if (!throttleRef.current) {
+    // Debounce: wait 250ms of no movement before sending
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
       sendVolume(v);
-      throttleRef.current = setTimeout(() => {
-        throttleRef.current = null;
-        // Send the latest value if it changed during the throttle window
-        sendVolume(latestValue.current);
-      }, 100);
-    }
+    }, 250);
   }, [sendVolume]);
 
   const handleEnd = useCallback(() => {
-    setIsDragging(false);
-    if (throttleRef.current) {
-      clearTimeout(throttleRef.current);
-      throttleRef.current = null;
+    // Send final value immediately on release
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
     }
-    sendVolume(latestValue.current);
-  }, [sendVolume]);
+    sendVolume(localValue);
+    // Small delay before allowing external sync to avoid flicker
+    setTimeout(() => setIsDragging(false), 300);
+  }, [sendVolume, localValue]);
 
   return (
     <div className="flex items-center gap-2 w-full">
