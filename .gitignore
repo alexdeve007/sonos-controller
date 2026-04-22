@@ -3,3 +3,5 @@ dist/
 client/dist/
 *.dmg
 .DS_Store
+logs/
+

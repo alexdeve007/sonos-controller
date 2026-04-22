@@ -271,7 +271,7 @@ function AppContent() {
                 </svg>
               </span>
               <span className="text-xs text-indigo-700 truncate">
-                {selectedSpeaker.currentTrack || 'Ready'} &middot; {selectedSpeaker.name}
+                {selectedSpeaker.currentStream?.title || 'Ready'} &middot; {selectedSpeaker.name}
               </span>
             </div>
             <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">

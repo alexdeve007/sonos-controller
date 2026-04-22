@@ -84,3 +84,14 @@ export function addSpeakerByIp(ip) {
     body: JSON.stringify({ ip }),
   });
 }
+
+export function getRecentUrls() {
+  return request('/api/recent-urls');
+}
+
+export function deleteRecentUrl(url) {
+  return request('/api/recent-urls', {
+    method: 'DELETE',
+    body: JSON.stringify({ url }),
+  });
+}

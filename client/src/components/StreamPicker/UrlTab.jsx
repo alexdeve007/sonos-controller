@@ -1,4 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import * as api from '../../api';
+
+// Known station logos — matched by URL substring
+const KNOWN_LOGOS = [
+  { match: 'radiofrance.fr/fip', logo: '/logos/fip.svg', name: 'FIP' },
+  { match: 'fip-', logo: '/logos/fip.svg', name: 'FIP' },
+  { match: 'fip.', logo: '/logos/fip.svg', name: 'FIP' },
+];
+
+function getStationLogo(url) {
+  const lower = (url || '').toLowerCase();
+  const known = KNOWN_LOGOS.find((k) => lower.includes(k.match));
+  return known?.logo || null;
+}
 
 export default function UrlTab({ onPlay }) {
   const [url, setUrl] = useState('');
@@ -6,31 +20,39 @@ export default function UrlTab({ onPlay }) {
   const [recentUrls, setRecentUrls] = useState([]);
   const [editMode, setEditMode] = useState(false);
 
-  useEffect(() => {
+  const loadRecent = async () => {
     try {
-      const stored = JSON.parse(localStorage.getItem('recentUrls') || '[]');
-      setRecentUrls(stored);
+      const data = await api.getRecentUrls();
+      setRecentUrls(data || []);
     } catch {
       setRecentUrls([]);
     }
+  };
+
+  useEffect(() => {
+    loadRecent();
   }, []);
 
   const handlePlay = () => {
     if (!url.trim()) return;
-
-    // Save to recent
-    const entry = { url: url.trim(), title: title.trim() || url.trim() };
-    const updated = [entry, ...recentUrls.filter((r) => r.url !== url.trim())].slice(0, 5);
-    setRecentUrls(updated);
-    localStorage.setItem('recentUrls', JSON.stringify(updated));
-
     onPlay({ url: url.trim(), title: title.trim() || url.trim() });
     setUrl('');
     setTitle('');
+    // Server saves the recent URL on play, refresh after a moment
+    setTimeout(loadRecent, 500);
   };
 
   const handleQuickPlay = (recent) => {
     onPlay({ url: recent.url, title: recent.title });
+    setTimeout(loadRecent, 500);
+  };
+
+  const handleDelete = async (recentUrl) => {
+    try {
+      await api.deleteRecentUrl(recentUrl);
+      setRecentUrls(recentUrls.filter((r) => r.url !== recentUrl));
+      if (recentUrls.length <= 1) setEditMode(false);
+    } catch {}
   };
 
   return (
@@ -77,27 +99,25 @@ export default function UrlTab({ onPlay }) {
               {editMode ? 'Done' : 'Edit'}
             </button>
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {recentUrls.map((recent, i) => (
               <button
                 key={i}
-                onClick={() => {
-                  if (editMode) {
-                    const updated = recentUrls.filter((r) => r.url !== recent.url);
-                    setRecentUrls(updated);
-                    localStorage.setItem('recentUrls', JSON.stringify(updated));
-                    if (updated.length === 0) setEditMode(false);
-                  } else {
-                    handleQuickPlay(recent);
-                  }
-                }}
-                className={`px-3 py-1.5 text-xs rounded-full truncate max-w-[200px] transition-colors ${
+                onClick={() => editMode ? handleDelete(recent.url) : handleQuickPlay(recent)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full truncate max-w-[200px] transition-colors ${
                   editMode
                     ? 'bg-red-50 text-red-600 border border-red-200'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
                 title={recent.url}
               >
+                {!editMode && (recent.logo || getStationLogo(recent.url)) && (
+                  <img
+                    src={recent.logo || getStationLogo(recent.url)}
+                    alt=""
+                    className="w-5 h-5 rounded shrink-0"
+                  />
+                )}
                 {editMode ? `✕ ${recent.title}` : recent.title}
               </button>
             ))}

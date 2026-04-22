@@ -66,6 +66,23 @@ router.post('/play', async (req, res) => {
   }
 });
 
+router.get('/recent-urls', (req, res) => {
+  const store = new Store();
+  res.json(store.get('recentUrls', []));
+});
+
+router.delete('/recent-urls', (req, res) => {
+  const { url } = req.body;
+  const store = new Store();
+  if (url) {
+    const recent = store.get('recentUrls', []);
+    store.set('recentUrls', recent.filter((r) => r.url !== url));
+  } else {
+    store.set('recentUrls', []);
+  }
+  res.json({ success: true });
+});
+
 router.post('/stop', async (req, res) => {
   const { targetId } = req.body;
   const speaker = getSpeaker(targetId);
