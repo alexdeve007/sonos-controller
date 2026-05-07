@@ -1,6 +1,6 @@
 # Sonos Controller
 
-A lightweight macOS menu bar app to control Sonos speakers on your local network. Also works on your phone via the browser.
+A lightweight macOS menu bar app to control Sonos speakers on your local network to play Radio only. Also works on your phone via the browser.
 
 ![Electron](https://img.shields.io/badge/Electron-React-blue) ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
 
