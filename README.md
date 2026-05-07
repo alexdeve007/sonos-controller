@@ -1,4 +1,4 @@
-# Sonos Controller
+# Sonos Controller for Online Radios
 
 A lightweight macOS menu bar app to control Sonos speakers on your local network to play Radio only. Also works on your phone via the browser.
 
